@@ -2,9 +2,15 @@
 
 This tool automatically manages your Wi-Fi connection based on Ethernet availability across **macOS, Linux, and Windows**. It ensures that Wi-Fi is turned off when a stable Ethernet connection is detected and turned back on when Ethernet is disconnected.
 
+## Environmental and Health Impact
+
+This application is designed to optimize energy efficiency and minimize the user's exposure to non-ionizing electromagnetic radiation (EMF). By automating the deactivation of the Wi-Fi radio when a wired connection is available, the software:
+- **Reduces Power Consumption**: Lowers the energy footprint of the device by disabling inactive wireless hardware.
+- **Minimizes EMF Exposure**: Limits the emission of radiofrequency (RF) signals within the immediate workspace, contributing to a reduced electromagnetic environment.
+
 ## Features
 
-- **Event-Driven (All Platforms)**: 
+- **Event-Driven (All Platforms)**:
   - **macOS**: Uses `SCDynamicStore` (Native Swift).
   - **Linux**: Uses `nmcli monitor` (NetworkManager).
   - **Windows**: Uses `CIM Indication Events` (PowerShell).
@@ -128,7 +134,7 @@ The project uses GitHub Actions to automate the build and release process across
 
 This micro-app is designed with extreme efficiency in mind:
 - **Zero CPU Idle Usage**: All versions are event-driven. They do not "poll" the system; they wait for the OS to push notifications.
-- **Low Memory Footprint**: 
+- **Low Memory Footprint**:
   - macOS: < 10MB (Native Swift)
   - Linux: < 5MB (Bash/nmcli)
   - Windows: < 20MB (PowerShell)
