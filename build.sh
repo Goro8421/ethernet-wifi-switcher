@@ -6,30 +6,37 @@ set -euo pipefail
 # =========================================================
 
 DIST_DIR="dist"
-rm -rf "$DIST_DIR"
 mkdir -p "$DIST_DIR"
 
-echo "🚀 Starting multi-platform build..."
+PLATFORM=${1:-all}
+
+echo "🚀 Starting build (Platform: $PLATFORM)..."
 
 # 1. macOS
-if [[ -f "src/macos/build-macos.sh" ]]; then
-    bash src/macos/build-macos.sh
-else
-    echo "⚠️ macOS build script not found."
+if [[ "$PLATFORM" == "all" || "$PLATFORM" == "macos" ]]; then
+    if [[ -f "src/macos/build-macos.sh" ]]; then
+        bash src/macos/build-macos.sh
+    else
+        echo "⚠️ macOS build script not found."
+    fi
 fi
 
 # 2. Linux
-if [[ -f "src/linux/build-linux.sh" ]]; then
-    bash src/linux/build-linux.sh
-else
-    echo "⚠️ Linux build script not found."
+if [[ "$PLATFORM" == "all" || "$PLATFORM" == "linux" ]]; then
+    if [[ -f "src/linux/build-linux.sh" ]]; then
+        bash src/linux/build-linux.sh
+    else
+        echo "⚠️ Linux build script not found."
+    fi
 fi
 
 # 3. Windows
-if [[ -f "src/windows/build-windows.sh" ]]; then
-    bash src/windows/build-windows.sh
-else
-    echo "⚠️ Windows build script not found."
+if [[ "$PLATFORM" == "all" || "$PLATFORM" == "windows" ]]; then
+    if [[ -f "src/windows/build-windows.sh" ]]; then
+        bash src/windows/build-windows.sh
+    else
+        echo "⚠️ Windows build script not found."
+    fi
 fi
 
 echo ""
