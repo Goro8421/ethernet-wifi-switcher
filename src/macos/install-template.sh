@@ -14,6 +14,7 @@ SYS_PLIST_PATH="/Library/LaunchDaemons/${DAEMON_LABEL}.plist"
 
 DEFAULT_WORKDIR="${HOME}/.ethernet-wifi-auto-switcher"
 WORKDIR="${1:-}"
+IS_TEST="${TEST_MODE:-0}"
 
 # If no workdir provided and interactive, ask user
 if [ -z "$WORKDIR" ] && [ -t 0 ]; then
@@ -122,6 +123,13 @@ detect_interfaces() {
                 fi
             fi
         done
+    fi
+
+    if [ -n "${ETHERNET_INTERFACE:-}" ]; then
+        AUTO_ETH="$ETHERNET_INTERFACE"
+    fi
+    if [ -n "${WIFI_INTERFACE:-}" ]; then
+        AUTO_WIFI="$WIFI_INTERFACE"
     fi
 
     # Method 5: Final fallback - any enX that's not Wi-Fi
@@ -256,6 +264,10 @@ cleanup_existing() {
 
 main(){
   need_macos
+  if [ "$IS_TEST" = "1" ]; then
+    echo "TEST_MODE=1: skipping macOS install steps."
+    exit 0
+  fi
   ensure_root
   cleanup_existing
   echo ""
@@ -344,12 +356,17 @@ main(){
   echo "  • Turn Wi-Fi off when Ethernet is connected"
   echo "  • Turn Wi-Fi on when Ethernet is disconnected"
   echo "  • Continue working after OS reboot"
+  echo "Logs: $WATCH_LOG (watcher) and $HELPER_LOG (helper). Tail with: tail -f \"$WATCH_LOG\" \"$HELPER_LOG\""
   echo ""
   echo "To uninstall, run:"
   echo "  sudo sh \"$WORK_UNINSTALL\""
 }
 
 uninstall() {
+  if [ "$IS_TEST" = "1" ]; then
+    echo "TEST_MODE=1: skipping macOS uninstall steps."
+    exit 0
+  fi
   ensure_root
   echo "Uninstalling..."
   # We need to extract the uninstaller script to run it
