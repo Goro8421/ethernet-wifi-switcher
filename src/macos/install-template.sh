@@ -1,5 +1,5 @@
-#!/bin/bash
-set -euo pipefail
+#!/bin/sh
+set -eu
 
 # =========================================================
 # Eth/Wi-Fi Auto Switcher (macOS Installer Template)
@@ -16,8 +16,9 @@ DEFAULT_WORKDIR="${HOME}/.ethernet-wifi-auto-switcher"
 WORKDIR="${1:-}"
 
 # If no workdir provided and interactive, ask user
-if [[ -z "$WORKDIR" && -t 0 ]]; then
-  read -p "Enter installation directory [$DEFAULT_WORKDIR]: " input_dir
+if [ -z "$WORKDIR" ] && [ -t 0 ]; then
+  printf "Enter installation directory [%s]: " "$DEFAULT_WORKDIR"
+  read -r input_dir
   WORKDIR=${input_dir:-$DEFAULT_WORKDIR}
 fi
 
@@ -30,17 +31,17 @@ UNINSTALL_CONTENT_B64="__UNINSTALL_SCRIPT_B64__"
 PLIST_CONTENT_B64="__PLIST_TEMPLATE_B64__"
 
 die(){ echo "ERROR: $*" >&2; exit 1; }
-need_macos(){ [[ "$(uname -s)" == "Darwin" ]] || die "macOS only."; }
+need_macos(){ [ "$(uname -s)" = "Darwin" ] || die "macOS only."; }
 
 ensure_root(){
-  if [[ "${EUID}" -ne 0 ]]; then
+  if [ "$(id -u)" -ne 0 ]; then
     echo "Re-running with sudo..."
-    exec sudo -E bash "$0" "$WORKDIR"
+    exec sudo -E sh "$0" "$WORKDIR"
   fi
 }
 
 real_user_home(){
-  if [[ -n "${SUDO_USER:-}" ]]; then
+  if [ -n "${SUDO_USER:-}" ]; then
     dscl . -read "/Users/${SUDO_USER}" NFSHomeDirectory 2>/dev/null | awk '{print $2}'
   else
     echo "$HOME"
@@ -50,59 +51,206 @@ real_user_home(){
 detect_interfaces() {
     echo "Detecting network interfaces..."
 
-    # Detect defaults
+    # Detect Wi-Fi
     AUTO_WIFI=$(networksetup -listallhardwareports | awk '/Hardware Port: (Wi-Fi|AirPort)/ {getline; print $2}' | head -n 1) || AUTO_WIFI=""
-    AUTO_ETH=$(networksetup -listallhardwareports | awk '/Hardware Port: (Ethernet|LAN|USB 10\/100\/1000 LAN)/ {getline; print $2}' | head -n 1) || AUTO_ETH=""
 
-    if [[ -z "$AUTO_ETH" ]]; then
+    # Detect Ethernet - prioritize USB LAN adapters, then other Ethernet/LAN, then any enX interface
+    AUTO_ETH=""
+
+    # Method 1: Prefer USB LAN adapters (e.g., "USB 10/100/1G/2.5G LAN")
+    AUTO_ETH=$(networksetup -listallhardwareports | awk '
+        /Hardware Port:.*USB.*LAN/ {
+            getline;
+            if ($1 == "Device:") {
+                print $2;
+                exit
+            }
+        }
+    ')
+
+    # Method 2: If no USB found, try other Ethernet/LAN interfaces with IP addresses
+    if [ -z "$AUTO_ETH" ]; then
+        networksetup -listallhardwareports | awk '
+            /Hardware Port:.*Ethernet|Hardware Port:.*LAN/ {
+                if ($0 !~ /Thunderbolt Bridge|USB/) {
+                    getline;
+                    if ($1 == "Device:") {
+                        print $2
+                    }
+                }
+            }
+        ' | while read -r iface; do
+            if [ -n "$iface" ] && [ "$iface" != "$AUTO_WIFI" ]; then
+                ip=$(/usr/sbin/ipconfig getifaddr "$iface" 2>/dev/null || true)
+                if [ -n "$ip" ]; then
+                    AUTO_ETH="$iface"
+                    echo "$iface" > /tmp/auto_eth_detected.$$
+                    break
+                fi
+            fi
+        done
+
+        if [ -f /tmp/auto_eth_detected.$$ ]; then
+            AUTO_ETH=$(cat /tmp/auto_eth_detected.$$)
+            rm -f /tmp/auto_eth_detected.$$
+        fi
+    fi
+
+    # Method 3: If still not found, try any Ethernet/LAN interface by name pattern (without IP check)
+    if [ -z "$AUTO_ETH" ]; then
+        AUTO_ETH=$(networksetup -listallhardwareports | awk '
+            /Hardware Port:.*Ethernet|Hardware Port:.*LAN/ {
+                if ($0 !~ /Thunderbolt Bridge|USB/) {
+                    getline;
+                    if ($1 == "Device:") {
+                        print $2;
+                        exit
+                    }
+                }
+            }
+        ')
+    fi
+
+    # Method 4: Fallback to any enX interface that's not Wi-Fi and has IP
+    if [ -z "$AUTO_ETH" ]; then
+        for iface in $(networksetup -listallhardwareports | awk '/Device: en/ {print $2}'); do
+            if [ "$iface" != "$AUTO_WIFI" ]; then
+                ip=$(/usr/sbin/ipconfig getifaddr "$iface" 2>/dev/null || true)
+                if [ -n "$ip" ]; then
+                    AUTO_ETH="$iface"
+                    break
+                fi
+            fi
+        done
+    fi
+
+    # Method 5: Final fallback - any enX that's not Wi-Fi
+    if [ -z "$AUTO_ETH" ]; then
         AUTO_ETH=$(networksetup -listallhardwareports | awk '/Device: en/ {print $2}' | grep -v "^${AUTO_WIFI}$" | head -n 1) || AUTO_ETH=""
     fi
 
-    if [[ -t 0 ]]; then
+    if [ -t 0 ]; then
         echo ""
         echo "Available network interfaces:"
         networksetup -listallhardwareports
         echo ""
 
         WIFI_PROMPT=${AUTO_WIFI:-"Not set"}
-        read -p "Enter Wi-Fi interface [$WIFI_PROMPT]: " input_wifi
+        printf "Enter Wi-Fi interface [%s]: " "$WIFI_PROMPT"
+        read -r input_wifi
         WIFI_DEV=${input_wifi:-$AUTO_WIFI}
 
         ETH_PROMPT=${AUTO_ETH:-"Not set"}
-        read -p "Enter Ethernet interface [$ETH_PROMPT]: " input_eth
+        printf "Enter Ethernet interface [%s]: " "$ETH_PROMPT"
+        read -r input_eth
         ETH_DEV=${input_eth:-$AUTO_ETH}
+
+        echo ""
+        echo "DHCP Timeout Configuration:"
+        echo "  When ethernet connects, the interface becomes active but may not"
+        echo "  have an IP address yet (DHCP negotiation in progress)."
+        echo "  This timeout controls how long to wait for IP acquisition."
+        echo "  Increase for slow routers/DHCP servers (typical: 3-10 seconds)."
+        echo ""
+        printf "Enter DHCP timeout in seconds [7]: "
+        read -r input_timeout
+        TIMEOUT=${input_timeout:-7}
     else
         WIFI_DEV="$AUTO_WIFI"
         ETH_DEV="$AUTO_ETH"
+        TIMEOUT="${TIMEOUT:-7}"
     fi
 
     echo ""
-    echo "Using interfaces:"
+    echo "Using configuration:"
     echo "  Wi-Fi:    ${WIFI_DEV:-not found}"
     echo "  Ethernet: ${ETH_DEV:-not found}"
+    echo "  Timeout:  ${TIMEOUT}s"
 
-    if [[ -z "$WIFI_DEV" || -z "$ETH_DEV" ]]; then
+    if [ -z "$WIFI_DEV" ] || [ -z "$ETH_DEV" ]; then
         die "Both Wi-Fi and Ethernet interfaces must be specified to continue."
     fi
 }
 
+stop_processes_by_pattern() {
+    pattern="$1"
+    label="$2"
+    pids=$(pgrep -f "$pattern" || true)
+
+    if [ -n "$pids" ]; then
+        echo "Stopping $label processes..."
+        for pid in $pids; do
+            pname=$(ps -p "$pid" -o comm= 2>/dev/null || echo "$pattern")
+            kill "$pid" 2>/dev/null || true
+            sleep 0.1
+            if ! ps -p "$pid" >/dev/null 2>&1; then
+                echo "    process $pid $pname stopped"
+            else
+                echo "    process $pid $pname failed to stop"
+            fi
+        done
+    fi
+}
+
 cleanup_existing() {
-    if [[ -f "$SYS_PLIST_PATH" ]]; then
-        echo "Existing installation detected at $SYS_PLIST_PATH"
+    found_old_install=0
 
-        # Try to find the WorkingDirectory from the plist
-        # We check WorkingDirectory first, then fallback to StandardOutPath's directory
-        OLD_WORKDIR=$(grep -A 1 "WorkingDirectory" "$SYS_PLIST_PATH" | grep "<string>" | sed 's|.*<string>\(.*\)</string>.*|\1|' | head -n 1 || true)
+    # 1. Look for the standard plist
+    if [ -f "$SYS_PLIST_PATH" ]; then
+        found_old_install=1
+        echo "Old installation detected at: $SYS_PLIST_PATH"
 
-        if [[ -z "$OLD_WORKDIR" ]]; then
-            OLD_WORKDIR=$(grep -A 1 "StandardOutPath" "$SYS_PLIST_PATH" | grep "<string>" | sed 's|.*<string>\(.*\)</string>.*|\1|' | xargs dirname 2>/dev/null || true)
+        # Use plutil to safely extract values (handles binary plists)
+        OLD_WORKDIR=$(plutil -extract WorkingDirectory raw -o - "$SYS_PLIST_PATH" 2>/dev/null || true)
+
+        if [ -z "$OLD_WORKDIR" ]; then
+            OLD_LOGPATH=$(plutil -extract StandardOutPath raw -o - "$SYS_PLIST_PATH" 2>/dev/null || true)
+            if [ -n "$OLD_LOGPATH" ]; then
+                OLD_WORKDIR=$(dirname "$OLD_LOGPATH")
+            fi
         fi
-            bash "$OLD_WORKDIR/uninstall.sh" || true
+
+        if [ -n "$OLD_WORKDIR" ]; then
+            echo "  Workspace directory: $OLD_WORKDIR"
+        fi
+
+        if [ -n "$OLD_WORKDIR" ] && [ -f "$OLD_WORKDIR/uninstall.sh" ]; then
+            echo "  Running existing uninstaller..."
+            sh "$OLD_WORKDIR/uninstall.sh" || true
         else
-            echo "No existing uninstaller found or could not determine workdir. Performing manual cleanup..."
+            if [ -z "$OLD_WORKDIR" ]; then
+                echo "  Workspace directory not found. Performing manual cleanup..."
+            else
+                echo "  No uninstaller found. Performing manual cleanup..."
+            fi
+            stop_processes_by_pattern "ethwifiauto-watch" "watcher"
+            stop_processes_by_pattern "eth-wifi-auto.sh" "helper"
             launchctl bootout system "$SYS_PLIST_PATH" 2>/dev/null || true
+            launchctl unload "$SYS_PLIST_PATH" 2>/dev/null || true
             rm -f "$SYS_PLIST_PATH" "$SYS_HELPER_PATH" "$SYS_WATCHER_BIN"
         fi
+    fi
+
+    # 2. Extra safety: check for any other plists that might be ours
+    for extra_plist in /Library/LaunchDaemons/com.eth-wifi-auto*.plist /Library/LaunchDaemons/com.ethwifiauto*.plist; do
+        if [ -f "$extra_plist" ]; then
+            # Skip the one we are about to install if it's already there (handled above)
+            [ "$extra_plist" = "$SYS_PLIST_PATH" ] && continue
+
+            found_old_install=1
+            echo "Old installation detected at: $extra_plist"
+            echo "  Removing legacy configuration..."
+            stop_processes_by_pattern "ethwifiauto-watch" "watcher"
+            stop_processes_by_pattern "eth-wifi-auto.sh" "helper"
+            launchctl bootout system "$extra_plist" 2>/dev/null || true
+            launchctl unload "$extra_plist" 2>/dev/null || true
+            rm -f "$extra_plist"
+        fi
+    done
+
+    # 3. Report status
+    if [ "$found_old_install" -eq 0 ]; then
+        echo "No old installation detected."
     fi
 }
 
@@ -110,9 +258,10 @@ main(){
   need_macos
   ensure_root
   cleanup_existing
+  echo ""
   detect_interfaces
 
-  if [[ "$WORKDIR" == "$DEFAULT_WORKDIR" && -n "${SUDO_USER:-}" ]]; then
+  if [ "$WORKDIR" = "$DEFAULT_WORKDIR" ] && [ -n "${SUDO_USER:-}" ]; then
     WORKDIR="$(real_user_home)/.ethernet-wifi-auto-switcher"
   fi
 
@@ -137,13 +286,15 @@ main(){
   WORK_PLIST="${WORKDIR}/${DAEMON_LABEL}.plist"
   WORK_UNINSTALL="${WORKDIR}/uninstall.sh"
 
-  echo "Workspace: $WORKDIR"
+  echo "Installation directory: $WORKDIR"
+  echo ""
 
   echo "Extracting helper script..."
   echo "$HELPER_CONTENT_B64" | base64 -d > "$WORK_HELPER"
   sed -i '' "s|WIFI_DEV=\"\${WIFI_DEV:-en0}\"|WIFI_DEV=\"$WIFI_DEV\"|g" "$WORK_HELPER"
   sed -i '' "s|ETH_DEV=\"\${ETH_DEV:-en5}\"|ETH_DEV=\"$ETH_DEV\"|g" "$WORK_HELPER"
   sed -i '' "s|STATE_DIR=\"\${STATE_DIR:-/tmp}\"|STATE_DIR=\"$STATE_DIR\"|g" "$WORK_HELPER"
+  sed -i '' "s|TIMEOUT=\"\${TIMEOUT:-7}\"|TIMEOUT=\"$TIMEOUT\"|g" "$WORK_HELPER"
   chmod +x "$WORK_HELPER"
 
   echo "Extracting watcher binary..."
@@ -186,7 +337,16 @@ main(){
   launchctl bootout system "$SYS_PLIST_PATH" >/dev/null 2>&1 || true
   launchctl bootstrap system "$SYS_PLIST_PATH" >/dev/null 2>&1 || true
 
-  echo "✅ Installed successfully."
+  echo ""
+  echo "✅ Installation complete."
+  echo ""
+  echo "The service is now running. It will automatically:"
+  echo "  • Turn Wi-Fi off when Ethernet is connected"
+  echo "  • Turn Wi-Fi on when Ethernet is disconnected"
+  echo "  • Continue working after OS reboot"
+  echo ""
+  echo "To uninstall, run:"
+  echo "  sudo sh \"$WORK_UNINSTALL\""
 }
 
 uninstall() {
@@ -199,10 +359,10 @@ uninstall() {
     sed "s|SYS_PLIST_PATH_PLACEHOLDER|$SYS_PLIST_PATH|g" | \
     sed "s|SYS_HELPER_PATH_PLACEHOLDER|$SYS_HELPER_PATH|g" | \
     sed "s|SYS_WATCHER_BIN_PLACEHOLDER|$SYS_WATCHER_BIN|g" | \
-    sed "s|WORKDIR_PLACEHOLDER|$WORKDIR|g" | bash
+    sed "s|WORKDIR_PLACEHOLDER|$WORKDIR|g" | sh
 }
 
-if [[ "${1:-}" == "--uninstall" ]]; then
+if [ "${1:-}" = "--uninstall" ]; then
   uninstall
 else
   main "$@"

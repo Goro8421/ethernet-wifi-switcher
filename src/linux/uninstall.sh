@@ -1,5 +1,5 @@
-#!/bin/bash
-set -euo pipefail
+#!/bin/sh
+set -eu
 
 SERVICE_NAME="eth-wifi-auto"
 DEFAULT_INSTALL_DIR="/usr/local/bin"
@@ -12,7 +12,7 @@ else
     INSTALL_DIR="$DEFAULT_INSTALL_DIR"
 fi
 
-if [ "$EUID" -ne 0 ]; then
+if [ "$(id -u)" -ne 0 ]; then
     echo "Please run as root (sudo)"
     exit 1
 fi
@@ -22,6 +22,8 @@ echo "Uninstalling Ethernet/Wi-Fi Auto Switcher..."
 if systemctl is-active --quiet "$SERVICE_NAME"; then
     systemctl stop "$SERVICE_NAME"
 fi
+
+pkill -f "eth-wifi-auto.sh" || true
 
 if systemctl is-enabled --quiet "$SERVICE_NAME"; then
     systemctl disable "$SERVICE_NAME"
@@ -33,3 +35,4 @@ rm -f "$INSTALL_DIR/eth-wifi-auto.sh"
 systemctl daemon-reload
 
 echo "Uninstallation complete."
+echo ""

@@ -22,16 +22,65 @@ This application is designed to optimize energy efficiency and minimize the user
   - **macOS**: Uses `SCDynamicStore` (Native Swift).
   - **Linux**: Uses `nmcli monitor` (NetworkManager).
   - **Windows**: Uses `CIM Indication Events` (PowerShell).
+- **Intelligent Interface Detection**: Automatically identifies and prioritizes network interfaces with active IP addresses.
+- **Smart State Tracking**: Persistent state management enables instant Wi-Fi activation on disconnect and retry logic only when connecting.
+- **Configurable Timeout**: Adjustable IP acquisition timeout (default 7s) via `TIMEOUT` environment variable for slow routers.
+- **Universal Linux Support**: Fallback detection using `nmcli` → `ip` command → `/sys/class/net` for maximum compatibility.
 - **Zero CPU Idle Usage**: All implementations sleep until the system notifies them of a network change.
-- **Robust Detection**: Verifies actual connectivity before switching.
-- **Automatic Interface Detection**: No manual configuration required.
+- **POSIX Compliant**: Shell scripts work across different shells and minimal Linux distributions.
 
 ## How it Works
 
 ### Interface Detection
-The script identifies the correct network interfaces automatically on all platforms using native system tools (`networksetup` on Mac, `nmcli` on Linux, `Get-NetAdapter` on Windows).
+The scripts automatically identify network interfaces using native system tools:
+- **macOS**: `networksetup` with IP address filtering via `ipconfig`
+- **Linux**: Multi-tier detection (NetworkManager, `ip` command, or `/sys/class/net`)
+- **Windows**: `Get-NetAdapter` with IP address filtering via `Get-NetIPAddress`
 
-### Switching Logic
+Interfaces are prioritized by active IP address presence to ensure reliable detection.
+
+### State Tracking & Retry Logic
+The system maintains a persistent state file to track ethernet connection status:
+- **Connected → Disconnected**: Wi-Fi enabled immediately (no delay)
+- **Disconnected → Connected**: Polls every 1 second up to configurable timeout waiting for IP address acquisition
+- Logs when interface is active but no IP assigned yet (helpful for DHCP debugging)
+
+### DHCP Timeout Configuration
+The timeout parameter controls how long to wait for IP address acquisition when ethernet connects:
+
+**What it does:**
+- When ethernet is plugged in, the interface becomes active immediately
+- However, obtaining an IP address via DHCP takes additional time (typically 2-7 seconds)
+- The script polls every 1 second until either an IP is acquired or the timeout is reached
+- If no IP is obtained within the timeout, Wi-Fi stays enabled
+
+**When to adjust:**
+- **Slow DHCP servers**: Some routers/networks take 10+ seconds to assign IPs
+- **Enterprise networks**: Corporate networks with authentication may need longer timeouts
+- **Fast networks**: Home networks with modern routers typically work fine with default 7s
+
+**Configuration options:**
+
+During installation (interactive prompt):
+```bash
+DHCP timeout in seconds [7]: 10
+```
+
+Via environment variable (non-interactive):
+```bash
+# macOS/Linux
+TIMEOUT=10 sudo bash ./install-macos.sh
+
+# Windows
+$env:TIMEOUT=10; .\install-windows.ps1
+```
+
+**Recommended values:**
+- Fast home network: 5 seconds
+- Normal network: 7 seconds (default)
+- Slow/enterprise network: 10-15 seconds
+
+### Event-Driven Architecture
 The app remains idle and consumes zero CPU cycles until a network event is triggered by the OS.
 
 ## ⚠️ Important Requirement
@@ -84,7 +133,7 @@ The pre-compiled Swift watcher is **ad-hoc signed**. When you run the installer,
 The PowerShell scripts are not digitally signed. To run the installer, you must use the `-ExecutionPolicy Bypass` flag (included in the quick install command). Windows may show a "SmartScreen" warning because the script is downloaded from the internet; you may need to click "Run anyway".
 
 ### Linux
-No signing issues, but the installer requires `sudo` to create the `systemd` service and copy files to `/usr/local/bin`.
+No signing issues, but the installer requires `sudo` to create the `systemd` service and copy files to `/opt/eth-wifi-auto`.
 
 ## Building from Source
 
@@ -101,35 +150,127 @@ The project uses a modular build system to generate self-contained installers.
 
 ## Installation & Uninstallation
 
-### macOS
+If you downloaded the script manually, you may need to grant it execution permissions first:
+`chmod +x install-macos.sh` (or `install-linux.sh`).
+
+### 🍎 macOS
 **Install:**
 ```bash
-sudo ./dist/install-macos.sh
+sudo bash ./dist/install-macos.sh
 ```
-**Uninstall:**
-```bash
-sudo ./dist/install-macos.sh --uninstall
+Output:
+```
+...
+Installation directory: /Users/dst0/.ethernet-wifi-auto-switcher
+
+Extracting helper script...
+Extracting watcher binary...
+Installing system binaries...
+Generating LaunchDaemon plist...
+Loading LaunchDaemon...
+
+✅ Installation complete.
+
+The service is now running. It will automatically:
+  • Turn Wi-Fi off when Ethernet is connected
+  • Turn Wi-Fi on when Ethernet is disconnected
+  • Continue working after OS reboot
+
+To uninstall, run:
+  sudo bash ~/.ethernet-wifi-auto-switcher/uninstall.sh
 ```
 
-### Linux
+**Uninstall:**
+```bash
+sudo bash ~/.ethernet-wifi-auto-switcher/uninstall.sh
+```
+Output:
+```
+Stopping LaunchDaemon...
+Stopping any running processes...
+Removing system files...
+Removing workspace...
+✅ Uninstalled completely.
+```
+
+---
+
+### 🐧 Linux
 **Install:**
 ```bash
-sudo ./dist/install-linux.sh
+sudo bash ./dist/install-linux.sh
 ```
-**Uninstall:**
-```bash
-sudo ./dist/install-linux.sh --uninstall
+Output:
+```
+...
+Installation directory: /opt/eth-wifi-auto
+
+...
+Extracting switcher...
+Creating systemd service...
+Starting service...
+
+✅ Installation complete.
+
+The service is now running. It will automatically:
+  • Turn Wi-Fi off when Ethernet is connected
+  • Turn Wi-Fi on when Ethernet is disconnected
+  • Continue working after OS reboot
+
+To uninstall, run:
+  sudo bash "/opt/eth-wifi-auto/uninstall.sh"
 ```
 
-### Windows (PowerShell Admin)
+**Uninstall:**
+```bash
+sudo bash "/opt/eth-wifi-auto/uninstall.sh"
+```
+Output:
+```
+Detected installation directory: /opt/eth-wifi-auto
+Uninstalling Ethernet/Wi-Fi Auto Switcher...
+Uninstallation complete.
+```
+
+---
+
+### 🪟 Windows (PowerShell Admin)
 **Install:**
 ```powershell
 .\dist\install-windows.ps1
 ```
+Output:
+```
+...
+Installation directory: C:\Program Files\EthWifiAuto
+
+Creating Scheduled Task...
+
+✅ Installation complete.
+
+The task is now running. It will automatically:
+  • Turn Wi-Fi off when Ethernet is connected
+  • Turn Wi-Fi on when Ethernet is disconnected
+  • Continue working after OS reboot
+
+To uninstall, run:
+  powershell.exe -ExecutionPolicy Bypass -File "C:\Program Files\EthWifiAuto\uninstall.ps1"
+```
+
 **Uninstall:**
 ```powershell
-.\dist\install-windows.ps1 -Uninstall
+powershell.exe -ExecutionPolicy Bypass -File "C:\Program Files\EthWifiAuto\uninstall.ps1"
 ```
+Output:
+```
+Detected installation directory: C:\Program Files\EthWifiAuto
+Uninstalling Ethernet/Wi-Fi Auto Switcher...
+Scheduled task removed.
+Installation directory removed.
+✅ Uninstalled completely.
+```
+
+---
 
 ## CI/CD Pipeline
 
