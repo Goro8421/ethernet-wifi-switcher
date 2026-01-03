@@ -140,3 +140,7 @@ This micro-app is designed with extreme efficiency in mind:
 - `src/windows/`: Windows source files (Switcher logic, uninstaller, installer template).
 - `build.sh`: Root build coordinator that triggers platform-specific builds.
 - `dist/`: Contains the generated self-contained installers for all platforms.
+
+## License
+
+This project is licensed under a custom Non-Commercial License. Commercial usage or usage within any business units is strictly prohibited without a written agreement with the owner (dst0). See the [LICENSE](LICENSE) file for details.
