@@ -52,23 +52,11 @@ jobs:
     permissions:
       contents: write
     steps:
-      - name: Download macOS Artifact
+      - name: Download all artifacts
         uses: actions/download-artifact@v4
         with:
-          name: macos-install-script
           path: dist
-
-      - name: Download Linux Artifact
-        uses: actions/download-artifact@v4
-        with:
-          name: linux-script
-          path: dist
-
-      - name: Download Windows Artifact
-        uses: actions/download-artifact@v4
-        with:
-          name: windows-script
-          path: dist
+          merge-multiple: true
 
       - name: Create Release
         uses: softprops/action-gh-release@v2
