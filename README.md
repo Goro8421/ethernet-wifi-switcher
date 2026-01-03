@@ -143,4 +143,4 @@ This micro-app is designed with extreme efficiency in mind:
 
 ## License
 
-This project is licensed under a custom Non-Commercial License. Commercial usage or usage within any business units is strictly prohibited without a written agreement with the owner (dst0). See the [LICENSE](LICENSE) file for details.
+This project is licensed under a Proprietary Non-Commercial License. Commercial usage, usage within business units, and redistribution of the software are strictly prohibited without a written agreement with the owner (dst0). You are welcome to share links to this repository or the installation instructions. See the [LICENSE](LICENSE) file for full details.
