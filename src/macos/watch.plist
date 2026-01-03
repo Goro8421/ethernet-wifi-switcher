@@ -1,0 +1,22 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+  <dict>
+    <key>Label</key>
+    <string>$DAEMON_LABEL</string>
+    <key>ProgramArguments</key>
+    <array>
+      <string>$SYS_WATCHER_BIN</string>
+      <string>$SYS_HELPER_PATH</string>
+      <string>$HELPER_LOG</string>
+      <string>$HELPER_ERR</string>
+      <string>$DAEMON_LABEL</string>
+      <string>$WIFI_DEV</string>
+      <string>$ETH_DEV</string>
+    </array>
+    <key>RunAtLoad</key><true/>
+    <key>KeepAlive</key><true/>
+    <key>StandardOutPath</key><string>$WATCH_LOG</string>
+    <key>StandardErrorPath</key><string>$WATCH_ERR</string>
+  </dict>
+</plist>

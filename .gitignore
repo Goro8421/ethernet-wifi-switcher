@@ -1,0 +1,20 @@
+# macOS files
+.DS_Store
+
+# IDE files
+.idea/
+*.iml
+
+# Build artifacts
+dist/
+install.sh
+ethwifiauto-watch-*
+
+# Logs (if any are created locally)
+*.log
+*.err
+
+# State files
+state/
+bin/
+obj/

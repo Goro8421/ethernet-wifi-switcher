@@ -1,0 +1,142 @@
+# Ethernet Wi-Fi Switcher
+
+This tool automatically manages your Wi-Fi connection based on Ethernet availability across **macOS, Linux, and Windows**. It ensures that Wi-Fi is turned off when a stable Ethernet connection is detected and turned back on when Ethernet is disconnected.
+
+## Features
+
+- **Event-Driven (All Platforms)**: 
+  - **macOS**: Uses `SCDynamicStore` (Native Swift).
+  - **Linux**: Uses `nmcli monitor` (NetworkManager).
+  - **Windows**: Uses `CIM Indication Events` (PowerShell).
+- **Zero CPU Idle Usage**: All implementations sleep until the system notifies them of a network change.
+- **Robust Detection**: Verifies actual connectivity before switching.
+- **Automatic Interface Detection**: No manual configuration required.
+
+## How it Works
+
+### Interface Detection
+The script identifies the correct network interfaces automatically on all platforms using native system tools (`networksetup` on Mac, `nmcli` on Linux, `Get-NetAdapter` on Windows).
+
+### Switching Logic
+The app remains idle and consumes zero CPU cycles until a network event is triggered by the OS.
+
+## ⚠️ Important Requirement
+
+For this tool to work seamlessly, ensure that at least one of your Wi-Fi networks is configured to **connect automatically**:
+
+- **macOS**: Enable **"Auto-Join"** in System Settings > Wi-Fi > [Your Network] > Details.
+- **Linux**: Enable **"Connect automatically"** in your NetworkManager connection settings.
+- **Windows**: Check **"Connect automatically when in range"** in your Wi-Fi network properties.
+
+If no network is set to auto-connect, the Wi-Fi interface will turn on but will not establish a connection until you manually select a network.
+
+## 🚀 Quick Install (One-Liner)
+
+Choose your platform and run the command in your terminal:
+
+### macOS
+```bash
+curl -fsSL https://github.com/dst0/ethernet-wifi-switcher/releases/latest/download/install-macos.sh | sudo bash
+```
+
+### Linux
+```bash
+curl -fsSL https://github.com/dst0/ethernet-wifi-switcher/releases/latest/download/install-linux.sh | sudo bash
+```
+
+### Windows (PowerShell Admin)
+```powershell
+iwr https://github.com/dst0/ethernet-wifi-switcher/releases/latest/download/install-windows.ps1 -useb | iex
+```
+
+---
+
+## 📦 Downloads
+
+You can download the latest pre-packaged versions from the [Releases](https://github.com/dst0/ethernet-wifi-switcher/releases) page:
+
+- 🍎 **macOS**: [install-macos.sh](https://github.com/dst0/ethernet-wifi-switcher/releases/latest/download/install-macos.sh)
+- 🐧 **Linux**: [install-linux.sh](https://github.com/dst0/ethernet-wifi-switcher/releases/latest/download/install-linux.sh)
+- 🪟 **Windows**: [install-windows.ps1](https://github.com/dst0/ethernet-wifi-switcher/releases/latest/download/install-windows.ps1)
+
+## 🛡️ Security & Code Signing
+
+Since this is an open-source project provided as scripts and a pre-compiled binary, you should be aware of the following:
+
+### macOS
+The pre-compiled Swift watcher is **ad-hoc signed**. When you run the installer, macOS might show a "Developer cannot be verified" warning. The installer automatically attempts to bypass this using `codesign -s -`, but if you encounter issues, you can build from source locally to ensure the binary is signed with your own local identity.
+
+### Windows
+The PowerShell scripts are not digitally signed. To run the installer, you must use the `-ExecutionPolicy Bypass` flag (included in the quick install command). Windows may show a "SmartScreen" warning because the script is downloaded from the internet; you may need to click "Run anyway".
+
+### Linux
+No signing issues, but the installer requires `sudo` to create the `systemd` service and copy files to `/usr/local/bin`.
+
+## Building from Source
+
+The project uses a modular build system to generate self-contained installers.
+
+1.  **Prerequisites**:
+    - macOS: Xcode Command Line Tools (`xcode-select --install`).
+    - Linux/Windows: No special tools required for building (uses `base64` and `sed`).
+2.  **Run the build**:
+    ```bash
+    ./build.sh
+    ```
+3.  **Output**: The generated installers will be in the `dist/` directory.
+
+## Installation & Uninstallation
+
+### macOS
+**Install:**
+```bash
+sudo ./dist/install-macos.sh
+```
+**Uninstall:**
+```bash
+sudo ./dist/install-macos.sh --uninstall
+```
+
+### Linux
+**Install:**
+```bash
+sudo ./dist/install-linux.sh
+```
+**Uninstall:**
+```bash
+sudo ./dist/install-linux.sh --uninstall
+```
+
+### Windows (PowerShell Admin)
+**Install:**
+```powershell
+.\dist\install-windows.ps1
+```
+**Uninstall:**
+```powershell
+.\dist\install-windows.ps1 -Uninstall
+```
+
+## CI/CD Pipeline
+
+The project uses GitHub Actions to automate the build and release process across all platforms:
+- **macOS**: Automatically compiles the Swift watcher into a Universal Binary and generates the `install-macos.sh` distribution script.
+- **Linux & Windows**: Packages the latest scripts for distribution.
+- **Releases**: Every time a new tag (e.g., `v1.0.0`) is pushed, the pipeline creates a GitHub Release with all necessary files for all three platforms.
+
+## System Efficiency & Performance
+
+This micro-app is designed with extreme efficiency in mind:
+- **Zero CPU Idle Usage**: All versions are event-driven. They do not "poll" the system; they wait for the OS to push notifications.
+- **Low Memory Footprint**: 
+  - macOS: < 10MB (Native Swift)
+  - Linux: < 5MB (Bash/nmcli)
+  - Windows: < 20MB (PowerShell)
+
+## Project Structure
+
+- `src/macos/`: macOS source files (Swift watcher, installer template, plist).
+- `src/linux/`: Linux source files (Switcher logic, uninstaller, installer template).
+- `src/windows/`: Windows source files (Switcher logic, uninstaller, installer template).
+- `build.sh`: Root build coordinator that triggers platform-specific builds.
+- `dist/`: Contains the generated self-contained installers for all platforms.
